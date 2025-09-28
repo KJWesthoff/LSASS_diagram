@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LSASS Data Flow - Mermaid Diagram</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f8f9fa;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 30px;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 40px;
+            margin-bottom: 20px;
+        }
+        .diagram-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .mermaid {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .note {
+            background: #e8f4f8;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .warning {
+            background: #fdf2e7;
+            border-left: 4px solid #e67e22;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>LSASS Data Flow Analysis</h1>
+        
+        <div class="note">
+            <strong>Note:</strong> This diagram illustrates LSASS (Local Security Authority Subsystem Service) data flows for educational and defensive security purposes only.
+        </div>
+
+        <h2>Main Data Flow Diagram</h2>
+        <div class="diagram-container">
+            <div class="mermaid">
+graph LR
+    %% External sources
+    Network["🌐 Network/Clients<br/>Kerberos, NTLM requests"]
+    
+    %% LSASS process
+    LSASS["🔒 LSASS Process<br/>• Active credentials<br/>• NTLM/NT hashes<br/>• Kerberos tickets<br/>• Access tokens<br/>• DPAPI keys"]
+    
+    %% On-disk stores
+    SAM["💾 SAM Hive<br/>Local account hashes<br/>(encrypted)<br/><small>C:\Windows\System32\config\SAM</small>"]
+    SECURITY["💾 SECURITY Hive<br/>LSA secrets<br/>Cached credentials<br/><small>C:\Windows\System32\config\SECURITY</small>"]
+    SYSTEM["💾 SYSTEM Hive<br/>Boot keys<br/>Decryption keys<br/><small>C:\Windows\System32\config\SYSTEM</small>"]
+    DPAPI["💾 DPAPI/MachineKeys<br/>Master keys<br/>Wrapped blobs<br/><small>C:\ProgramData\Microsoft\Crypto</small>"]
+    NTDS["💾 NTDS.dit<br/>Domain database<br/>(DC only)<br/><small>C:\Windows\NTDS\ntds.dit</small>"]
+    VSS["💾 VSS/Backups<br/>Offline copies<br/><small>\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy*</small>"]
+    
+    %% Data flows
+    Network --> LSASS
+    SAM --> LSASS
+    SECURITY --> LSASS
+    SYSTEM --> LSASS
+    DPAPI --> LSASS
+    NTDS --> LSASS
+    
+    %% Attack paths (dashed red)
+    LSASS -.->|"❌ Memory dump"| AttackA["Credential extraction"]
+    SAM -.->|"❌ Copy + SYSTEM"| AttackB["Offline cracking"]
+    NTDS -.->|"❌ Copy + SYSTEM"| AttackB
+    DPAPI -.->|"❌ Steal keys"| AttackC["Unwrap secrets"]
+    
+    %% Styling
+    classDef processBox fill:#e3f2fd,stroke:#1976d2,stroke-width:3px
+    classDef diskBox fill:#fff8e1,stroke:#f57c00,stroke-width:2px
+    classDef attackBox fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    classDef networkBox fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    
+    class LSASS processBox
+    class SAM,SECURITY,SYSTEM,DPAPI,NTDS,VSS diskBox
+    class AttackA,AttackB,AttackC attackBox
+    class Network networkBox
+            </div>
+        </div>
+
+        <h2>Timeline: When Data is Written and Read</h2>
+        <div class="diagram-container">
+            <div class="mermaid">
+timeline
+    title LSASS Data Access Timeline
+    
+    section Boot Process
+        System Start    : LSASS starts
+                       : Reads SYSTEM key
+                       
+    section User Activity
+        Interactive Logon : Reads cached credentials
+                         : Updates memory cache
+        Service Start     : Reads/writes LSA secrets
+                         : Service authentication
+                         
+    section Data Changes
+        Password Change   : Updates SAM/NTDS
+                         : Encrypts with SYSTEM key
+        AD Replication    : NTDS.dit updated
+                         : Domain controller sync
+                         
+    section Backup/Forensics
+        VSS Snapshot     : Creates offline copies
+                        : SAM/SECURITY/NTDS preserved
+            </div>
+        </div>
+
+        <h2>Attack Flow Analysis</h2>
+        <div class="diagram-container">
+            <div class="mermaid">
+flowchart TD
+    Start["🎯 Attacker Goal:<br/>Credential Access"]
+    
+    %% Attack paths
+    Start --> MemDump["Memory Dump Attack"]
+    Start --> OfflineCrack["Offline Cracking"]
+    Start --> DPAPIAttack["DPAPI Attack"]
+    
+    MemDump --> MemTools["Tools: Mimikatz, ProcDump"]
+    MemTools --> MemResult["Extract: Plaintext passwords<br/>NTLM hashes, Kerberos tickets"]
+    
+    OfflineCrack --> CopyFiles["Copy: SYSTEM + SAM/NTDS"]
+    CopyFiles --> CrackTools["Tools: Hashcat, John"]
+    CrackTools --> CrackResult["Crack password hashes"]
+    
+    DPAPIAttack --> StealKeys["Steal: MachineKeys/MasterKeys"]
+    StealKeys --> DPAPITools["Tools: Mimikatz DPAPI"]
+    DPAPITools --> DPAPIResult["Decrypt: Browser passwords<br/>Certificates, etc."]
+    
+    %% Defenses
+    MemResult --> DefMem["🛡️ Defense: PPL, Credential Guard"]
+    CrackResult --> DefOffline["🛡️ Defense: Strong passwords, MFA"]
+    DPAPIResult --> DefDPAPI["🛡️ Defense: File permissions, monitoring"]
+    
+    %% Styling
+    classDef attackNode fill:#ffcdd2,stroke:#d32f2f,stroke-width:2px
+    classDef toolNode fill:#fff3e0,stroke:#ff9800,stroke-width:2px
+    classDef resultNode fill:#e8f5e8,stroke:#4caf50,stroke-width:2px
+    classDef defenseNode fill:#e3f2fd,stroke:#2196f3,stroke-width:2px
+    
+    class Start,MemDump,OfflineCrack,DPAPIAttack attackNode
+    class MemTools,CopyFiles,CrackTools,StealKeys,DPAPITools toolNode
+    class MemResult,CrackResult,DPAPIResult resultNode
+    class DefMem,DefOffline,DefDPAPI defenseNode
+            </div>
+        </div>
+
+        <div class="warning">
+            <strong>Legal Notice:</strong> This information is provided for educational and defensive security purposes only. 
+            Unauthorized access to computer systems or credential harvesting is illegal. Always follow proper legal and ethical procedures 
+            for security research and forensic analysis.
+        </div>
+    </div>
+
+    <script>
+        // Initialize Mermaid
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis'
+            },
+            timeline: {
+                useMaxWidth: true
+            }
+        });
+    </script>
+</body>
+</html>
